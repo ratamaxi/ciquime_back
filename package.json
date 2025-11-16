@@ -1,0 +1,45 @@
+{
+  "name": "ciquime",
+  "version": "1.0.0",
+  "description": "Backend de Seguros",
+  "main": "index.js",
+  "author": "Ideas Integrales",
+  "license": "ISC",
+  "private": true,
+  "scripts": {
+    "start:dev": "nodemon NODE_ENV=development nodemon index.js",
+    "start:test": "nodemon NODE_ENV=testing nodemon index.js",
+    "start:prod": "nodemon NODE_ENV=production node index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "body-parser": "^2.2.0",
+    "cookie-parser": "~1.4.4",
+    "cors": "^2.8.5",
+    "debug": "~2.6.9",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-validator": "^7.2.1",
+    "http-errors": "~1.6.3",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.17.1",
+    "morgan": "~1.9.1",
+    "multer": "^2.0.2",
+    "mysql2": "^3.14.3",
+    "nodemon": "^3.1.9",
+    "uuid": "^11.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mogensen-montenegro/ciquime.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/mogensen-montenegro/ciquime/issues"
+  },
+  "homepage": "https://github.com/mogensen-montenegro/ciquime#readme",
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.2.1"
+  }
+}

@@ -1,0 +1,9 @@
+/node_modules/
+/.idea/
+.env
+src/resources/.env.development
+src/resources/.env.testing
+src/resources/.env.production
+
+package-lock.json
+.vercel
