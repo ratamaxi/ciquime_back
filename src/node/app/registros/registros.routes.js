@@ -17,19 +17,18 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-const FDS_DIR = process.env.FDS_DIR; // e.g. C:/wamp/www/CIQUIME/PDF/fds_temporal
+const FDS_DIR = process.env.FDS_DIR; 
 
 if (!FDS_DIR) throw new Error("FDS_DIR no definida");
-fs.mkdirSync(FDS_DIR, { recursive: true }); // por si no existe
+fs.mkdirSync(FDS_DIR, { recursive: true }); 
 
 const storageFds = multer.diskStorage({
   destination: (req, file, cb) => cb(null, FDS_DIR),
   filename: (req, file, cb) => {
-    // evitamos traversal y caracteres ilegales en Windows
     const safe = path
       .basename(file.originalname)
       .replace(/[\/\\:?*"<>|]/g, "_");
-    cb(null, safe); // << mantiene el nombre (p.ej. "muestra-1.pdf")
+    cb(null, safe); 
   },
 });
 

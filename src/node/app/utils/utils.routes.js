@@ -5,8 +5,8 @@ const router = express.Router();
 const {
   redirectHSO,
   redirectFET,
-  redirectFDS,      // opcional
-  getEncryptedId,   // opcional
+  redirectFDS,      
+  getEncryptedId,  
 } = require('./utils.controller');
 
 // ---------- Rutas Legacy: redirecciones ----------

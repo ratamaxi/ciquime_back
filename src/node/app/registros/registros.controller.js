@@ -5,7 +5,6 @@ const fs = require("fs");
 
 const obtenerMateriasPrimas = async (req, res) => {
   try {
-    // toma idUsuario y dias desde params, query o body
     const idUsuario =
       Number(req.params?.idUsuario ?? req.query?.idUsuario ?? req.body?.idUsuario ?? 0);
     const dias = 20
@@ -38,7 +37,6 @@ const obtenerEstadisticaInsumo = async (req, res) => {
   if (!idUsuario) return res.status(400).json({ error: 'idUsuario es requerido' });
 
   try {
-    // Contamos por estado (solo FDS fundamental = 1), con los JOINs que exige tu modelo de datos
     const [rows] = await pool.query(
       `
       SELECT me.estado AS estado, COUNT(*) AS total
@@ -75,11 +73,8 @@ const obtenerRegistrosInsumo = async (req, res) => {
     if (!idUsuario || Number.isNaN(idUsuario)) {
       return res.status(400).json({ error: 'idUsuario inválido' });
     }
-
     const insumo = (req.query.insumo) ?? '';
     const fabricante = (req.query.fabricante) ?? '';
-
-    // paginación opcional
     const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
 
@@ -153,7 +148,6 @@ const insertarInsumos = async (req, res) => {
       AD,
     } = req.body || {};
 
-    // fallback: si viene por param
     if (!id_usuario && idUsuario) id_usuario = idUsuario;
 
     // archivo subido por multer
@@ -207,8 +201,8 @@ const insertarInsumos = async (req, res) => {
       fabricante,
       revisionFDS ?? null,
       normalizeFecha(fechaFDS),
-      safeName,                   // name_fds -> "archivo.pdf"
-      finalPathForDb,             // dir_fds  -> "C:/wamp/www/CIQUIME/PDF/fds_temporal/archivo.pdf"
+      safeName,                   
+      finalPathForDb,             
       toTinyInt(visual, 0),
       sector ?? null,
       toTinyInt(procesado, 0),
@@ -267,7 +261,6 @@ const verEditarInsumo = async (req, res = response) => {
       ORDER BY mp.nombre_producto ASC, fd.FDS_fecha DESC
     `;
 
-    // Ejecutar consulta con parámetro preparado
     const [rows] = await pool.query(sql, [estado,Number(idUsuario)]);
 
     if (!rows || rows.length === 0) {
@@ -298,7 +291,7 @@ const normalizeFecha = (f) => {
     const [dd, mm, yyyy] = f.split('/');
     return `${yyyy}-${mm}-${dd}`;
   }
-  return f; // asume formato válido para MySQL (p.ej. 'YYYY-MM-DD')
+  return f; 
 };
 
 const eliminarInsumo = async (req, res) => {
@@ -309,9 +302,7 @@ const eliminarInsumo = async (req, res) => {
       usuario_id,
     } = req.body || {};
 
-    // Normalizo por si el front te pasa otros nombres:
     const materia_id = matempresa ?? req.body?.materia_id ?? req.body?.id;
-
     const faltan = [];
     if (!materia_id) faltan.push('matempresa (materia_id)');
     if (!empresa_id) faltan.push('empresa_id');
@@ -339,7 +330,6 @@ const eliminarInsumo = async (req, res) => {
     const [result] = await pool.execute(sql, params);
 
     if (result.affectedRows === 0) {
-      // No coincide la triple clave o ya estaba eliminado
       return res.status(404).json({
         ok: false,
         msj: 'No se encontró el insumo para ese usuario/empresa',
@@ -442,7 +432,7 @@ const obtenerDataSectorInsumo = async (req, res) => {
 
     return res.json({
       ok: true,
-      data: rows, // [{ emps: '...' }, ...]
+      data: rows, 
     });
   } catch (err) {
     console.error('Error en obtenerDataSectorInsumo:', err);
@@ -568,10 +558,6 @@ const obtenerCertificadosAVencer = async (req, res) => {
       return res.status(400).json({ ok: false, message: 'idUsuario inválido' });
     }
 
-    // Nota:
-    // - Calculamos 'estado' con respecto a la fecha actual del servidor (CURDATE()).
-    // - 'dias_restantes' puede ser negativo si ya está vencido.
-    // - Filtramos por las mismas condiciones que pediste.
     const sql = `
       SELECT
         me.usuario_id,
@@ -605,10 +591,10 @@ const obtenerCertificadosAVencer = async (req, res) => {
       producto: r.nombre_producto,
       extraname: r.extraname ?? null,
       certificado: r.nombre_calidoc ?? null,
-      fechaExpiracion: r.fechacalidad, // YYYY-MM-DD en MySQL
+      fechaExpiracion: r.fechacalidad, 
       aviso: r.aviso ?? null,
-      estado: r.estado,                 // 'vigente' | 'vencido'
-      dias_restantes: r.dias_restantes, // número (negativo si vencido)
+      estado: r.estado,                
+      dias_restantes: r.dias_restantes, 
     }));
 
     return res.json({ ok: true, data });

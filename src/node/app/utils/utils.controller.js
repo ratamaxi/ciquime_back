@@ -2,7 +2,6 @@ const { encryptIdCompat } = require('./crypto-legacy');
 
 const LEGACY_BASE_URL = process.env.LEGACY_BASE_URL || 'https://ciquime.com.ar';
 
-// si tus IDs son numéricos; si no, relajá esta validación
 function assertMateriaId(id) {
   if (!id || !/^\d+$/.test(String(id))) {
     const err = new Error('materiaId inválido');
@@ -37,7 +36,6 @@ async function redirectFET(req, res) {
   }
 }
 
-// opcional: proxy FDS si querés unificar
 async function redirectFDS(req, res) {
   try {
     const { root, rfn } = req.query;
@@ -50,7 +48,6 @@ async function redirectFDS(req, res) {
   }
 }
 
-// opcional: utilidad para probar el cifrado
 async function getEncryptedId(req, res) {
   try {
     const { materiaId } = req.params;

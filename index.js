@@ -2,11 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const bodyParser = require('body-parser');
-const mongoose = require('mongoose');
 const { resolve } = require('node:path');
 const pool = require('./src/node/core/database/mysql-config.js');
-
-
 
 // Cargar variables de entorno
 dotenv.config({
@@ -22,7 +19,7 @@ dotenv.config({
 
 const app = express();
 
-// ⚠️ CORS configurado correctamente
+// CORS
 const allowedOrigins = [
   'http://localhost:4200',
 ];
@@ -36,7 +33,6 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
 
-  // 🔥 Responder a las OPTIONS directamente sin pasar a las rutas
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
   }
@@ -49,7 +45,6 @@ app.use(bodyParser.json({ limit: '20mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '20mb' }));
 
 // Rutas
-//app.use('/api/login', require('./src/node/app/auth/auth.routes'));
 app.use('/api/usuario', require('./src/node/app/usuarios/usuario.routes'));
 app.use('/api/registros', require('./src/node/app/registros/registros.routes.js'));
 app.use('/api/auth', require('./src/node/app/auth/auth.routes'));

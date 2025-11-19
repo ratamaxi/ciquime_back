@@ -41,16 +41,16 @@ function decryptIdCompat(idEncryptB64) {
 }
 
 function encryptIdCompatEtiqueta(plainId, secret) {
-  const key = crypto.createHash('sha256').update(secret).digest(); // 32 bytes
+  const key = crypto.createHash('sha256').update(secret).digest(); 
   const iv = crypto.randomBytes(16);
   const block = 16;
 
   const buf = Buffer.from(String(plainId), 'utf8');
-  const padLen = (block - (buf.length % block)) % block; // 0..15
+  const padLen = (block - (buf.length % block)) % block; 
   const padded = padLen === 0 ? buf : Buffer.concat([buf, Buffer.alloc(padLen, 0)]);
 
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-  cipher.setAutoPadding(false); // usamos nuestro padding con ceros
+  cipher.setAutoPadding(false); 
   const enc = Buffer.concat([cipher.update(padded), cipher.final()]);
 
   return Buffer.concat([iv, enc]).toString('base64');

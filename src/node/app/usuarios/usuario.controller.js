@@ -103,7 +103,7 @@ const actualizarUsuario = async (req, res) => {
     mail,
     rank,
     padre,
-    id // Este es el WHERE
+    id
   ];
 
   try {
@@ -122,7 +122,6 @@ const actualizarUsuario = async (req, res) => {
 
 const obtenerDataDeUsuario = async (req, res) => {
   try {
-    // toma el nombre desde params, query o body (en ese orden)
     let nombre =
       req.params?.nombre ??
       req.query?.nombre ??
@@ -132,7 +131,6 @@ const obtenerDataDeUsuario = async (req, res) => {
       return res.status(400).json({ error: 'Falta el parámetro "nombre"' });
     }
 
-    // Query (sin exponer password)
     const sql = `
       SELECT
         u.nombre,
@@ -161,7 +159,6 @@ const obtenerDataDeUsuario = async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // Enviar el registro (sin password)
     return res.status(200).json(rows[0]);
   } catch (err) {
     console.error('obtenerDataDeUsuario error:', err);
@@ -178,11 +175,10 @@ async function obtenerEmpresas(req, res) {
     `;
     const [rows] = await pool.query(sql);
 
-    // (Opcional) fix rápido de acentos mal decodificados
     const fix = (s) => { try { return decodeURIComponent(escape(s)); } catch { return s; } };
     const data = rows.map(r => ({ id: Number(r.id), noemp: fix(r.noemp) }));
 
-    return res.json(data); // Array de { id, noemp }
+    return res.json(data); 
   } catch (e) {
     console.error('obtenerEmpresas error:', e);
     return res.status(500).json({ ok: false, msj: 'Error obteniendo empresas' });
@@ -217,14 +213,11 @@ const obtenerDatoUsuario = async (req, res) => {
 
     const row = rows[0];
 
-    // Por seguridad, NO devolvemos el password (ni aunque sea hash).
-    // Si lo necesitás para un flujo específico, descomenta bajo TU responsabilidad.
     const data = {
       id: userId,
       nombre: row.nombre,
       mail: row.mail,
       alias: row.alias,
-      // passwordHash: row.password, // ⚠️ NO recomendado exponerlo
     };
 
     return res.json({ ok: true, data });
@@ -275,7 +268,6 @@ try {
 
     const [result] = await pool.query(sql, params);
 
-    // affectedRows = 0 puede ser porque no existe el usuario o porque no cambió nada
     if (result.affectedRows === 0) {
       return res.status(404).json({ ok: false, message: 'Usuario no encontrado o sin cambios' });
     }

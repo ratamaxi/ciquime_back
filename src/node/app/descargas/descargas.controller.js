@@ -142,17 +142,6 @@ const obtenerMateriasPrimas = async (req, res) => {
 
     const [rows] = await pool.query(sql, [userId]);
 
-    // Si necesitás asegurar 1 FDS por materia_id (en caso de duplicados),
-    // podés filtrar en JS el más reciente por materia_id:
-    // const map = new Map();
-    // for (const r of rows) {
-    //   const k = r.materia_id;
-    //   if (!map.has(k) || new Date(r.FDS_fecha) > new Date(map.get(k).FDS_fecha)) {
-    //     map.set(k, r);
-    //   }
-    // }
-    // const data = Array.from(map.values());
-
     return res.json({ ok: true, data: rows });
   } catch (err) {
     console.error('Error en obtenerMateriasPrimas:', err);
@@ -502,8 +491,6 @@ const obtenerEtiqueta3L = async (req, res=response) => {
 
     // Encriptar compatible con el PHP (iv+cipher en base64)
     const enc = encryptIdCompatEtiqueta(String(idNum), LEGACY_KEY);
-
-    // Redirigir a ketiqueta.php
     const url = `${LEGACY_BASE_URL}/ketiqueta.php?id=${encodeURIComponent(enc)}`;
     return res.redirect(302, url);
   } catch (e) {
@@ -514,9 +501,7 @@ const obtenerEtiqueta3L = async (req, res=response) => {
 
 const obtenerCertificadosCalidad = async (req, res = response) => {
   try {
-    // acepta id por body o por params como fallback
     const bodyId = Number(req.body?.id_usuario);
-
     if (!Number.isFinite(bodyId) || bodyId <= 0) {
       return res.status(400).json({ ok: false, message: 'id_usuario inválido' });
     }
@@ -527,7 +512,10 @@ const obtenerCertificadosCalidad = async (req, res = response) => {
         materias_primas.nombre_producto,
         materia_empresa.extraname,
         materia_empresa.nombre_calidoc,
+        materia_empresa.nombre_calidoc2,
         materia_empresa.fechacalidad,
+        materia_empresa.fechacalidad2,
+        materias_primas.id,
         materia_empresa.aviso
       FROM materia_empresa
       INNER JOIN materias_primas ON materias_primas.id = materia_empresa.materia_id
@@ -541,12 +529,11 @@ const obtenerCertificadosCalidad = async (req, res = response) => {
     `;
 
     const [rows] = await pool.query(sql, [bodyId]);
-
-    // calcular estado (vigente / vencido) y días restantes
     const today = startOfDay(new Date());
     const data = (rows || []).map((r) => {
       // fechacalidad viene tipo 'YYYY-MM-DD'
       const fechaStr = r.fechacalidad ? String(r.fechacalidad) : null;
+      const fechaStr2 = r.fechacalidad2 ? String(r.fechacalidad2) : null;
       let estado = 'desconocido';
       let diasRestantes = null;
 
@@ -562,10 +549,13 @@ const obtenerCertificadosCalidad = async (req, res = response) => {
         producto: r.nombre_producto,
         extraname: r.extraname ?? null,
         nombre_calidoc: r.nombre_calidoc ?? null,
+        nombre_calidoc2: r.nombre_calidoc2 ?? null,
         fechacalidad: fechaStr,
+        fechacalidad2: fechaStr2,
         aviso: r.aviso ?? null,
-        estado,             // 'vigente' | 'vencido' | 'desconocido'
-        diasRestantes,      // puede ser negativo si ya venció
+        estado,            
+        diasRestantes,
+        materia_id: r.id  
       };
     });
 
@@ -575,6 +565,89 @@ const obtenerCertificadosCalidad = async (req, res = response) => {
     return res.status(500).json({ ok: false, message: 'Error al obtener certificados' });
   }
 };
+
+function toBool(v) {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v === 1;
+  if (typeof v === 'string') return ['1', 'true', 'TRUE', 'on', 'si', 'sí'].includes(v.trim().toLowerCase());
+  return false;
+}
+
+const editarCertificadosCalidad = async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ ok: false, msj: 'DB pool no inicializado' });
+    }
+    const {
+      materiaId,
+      usuarioId,
+      cali,                  
+      avisoEn,               
+      doc1Vencimiento,       
+      doc2Vencimiento,       
+      oldNombreCalidoc = '',
+      oldNombreCalidoc2 = '',
+    } = req.body;
+
+    // archivos (multer upload.fields([{ name:'doc1' }, { name:'doc2' }]))
+    const doc1File = req.files?.doc1?.[0] || null;
+    const doc2File = req.files?.doc2?.[0] || null;
+
+    // nombres finales: si hay archivo nuevo uso su filename, si no, el anterior
+    const fileName2 = doc1File ? doc1File.filename : oldNombreCalidoc;
+    const fileName3 = doc2File ? doc2File.filename : oldNombreCalidoc2;
+
+    // normalizamos fechas: si viene vacío, mandamos NULL
+    const f1 = doc1Vencimiento ? doc1Vencimiento : null;
+    const f2 = doc2Vencimiento ? doc2Vencimiento : null;
+
+    // requiere -> cali (1/0)
+    const requiere = String(cali) === '1' ? 'SI' : 'NO';
+    const aviso = Number(avisoEn) || 30;
+
+    // actualizado (FU en tu PHP): fecha/hora actual
+    const FU = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // validaciones mínimas
+    const mid = Number(materiaId);
+    const uid = Number(usuarioId);
+    if (!Number.isFinite(mid) || !Number.isFinite(uid)) {
+      return res.status(400).json({ ok: false, msj: 'materiaId/usuarioId inválidos' });
+    }
+
+    const sql = `
+      UPDATE materia_empresa
+      SET
+        requiere = ?,                -- 'SI' | 'NO'
+        nombre_calidoc = ?,          -- fileName2
+        nombre_calidoc2 = ?,         -- fileName3
+        fechacalidad = ?,            -- f1
+        fechacalidad2 = ?,           -- f2
+        aviso = ?,                   -- 30|60|90
+        actualizado = ?              -- stamp
+      WHERE materia_id = ? AND usuario_id = ?
+    `;
+
+    const params = [requiere, fileName2, fileName3, f1, f2, aviso, FU, mid, uid];
+
+    const [result] = await pool.execute(sql, params);
+
+    return res.status(200).json({
+      ok: true,
+      msj: 'Certificado actualizado',
+      affectedRows: result.affectedRows,
+      nombre_calidoc: fileName2,
+      nombre_calidoc2: fileName3,
+      fechacalidad: f1,
+      fechacalidad2: f2,
+    });
+  } catch (err) {
+    console.error('[editarCertificadosCalidad]', err);
+    return res.status(500).json({ ok: false, msj: 'Error al guardar certificado', detail: err.message });
+  }
+};
+
+
 
 // ───────────── Exports (igual a tu estilo actual) ─────────────
 module.exports = {
@@ -589,5 +662,6 @@ module.exports = {
   obtenerPais,
   obtenerEtiqueta3L,
   redirectEtiquetaByTipo,
-  obtenerCertificadosCalidad
+  obtenerCertificadosCalidad,
+  editarCertificadosCalidad
 };
