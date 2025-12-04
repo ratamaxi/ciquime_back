@@ -124,6 +124,63 @@ const obtenerRegistrosInsumo = async (req, res) => {
   }
 };
 
+const obtenerSgaConsulta = async (req, res) => {
+  try {
+    const idUsuarioRaw = req.params.idUsuario;
+    const idUsuario = Number(idUsuarioRaw);
+    if (!idUsuario || Number.isNaN(idUsuario)) {
+      return res.status(400).json({ error: 'idUsuario inválido' });
+    }
+    const insumo = (req.query.insumo) ?? '';
+    const fabricante = (req.query.fabricante) ?? '';
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+
+    const sql = `
+  SELECT
+    me.materia_id,
+    mp.nombre_producto,
+    et.razonSocial           AS fabricante,   
+    fd.FDS_rev               AS revisionFDS,  
+    fd.FDS_fecha             AS fechaFDS,     
+    fd.Nfile_name            AS fds,         
+    me.extraname,
+    me.apr_code
+  FROM materia_empresa AS me
+  INNER JOIN materias_primas AS mp
+    ON mp.id = me.materia_id
+  INNER JOIN empresa_tercero AS et
+    ON mp.fabricante = et.id
+  INNER JOIN fds_dir AS fd
+    ON mp.id = fd.insumo_id
+  WHERE me.estado = 'APROBADO'
+    AND me.usuario_id = ?
+    AND fd.fds_fundamental = 1          
+    AND mp.nombre_producto LIKE ?
+    AND et.razonSocial LIKE ?
+  ORDER BY mp.nombre_producto ASC, fd.FDS_fecha DESC
+  LIMIT ? OFFSET ?
+`;
+
+
+
+
+    const params = [
+      idUsuario,
+      `%${insumo}%`,
+      `%${fabricante}%`,
+      limit,
+      offset,
+    ];
+
+    const [rows] = await pool.query(sql, params);
+    return res.json(rows);
+  } catch (err) {
+    console.error('obtenerRegistrosInsumo error:', err);
+    return res.status(500).json({ error: 'Error consultando registros' });
+  }
+};
+
 const FDS_DIR = process.env.FDS_DIR || (
   process.platform === 'win32'
     ? 'C:\\wamp\\www\\CIQUIME\\PDF\\fds_temporal'
@@ -615,5 +672,6 @@ module.exports = {
   obtenerDataSectorInsumo,
   modificarInsumo,
   agregarItemAUsuario,
-  obtenerCertificadosAVencer
+  obtenerCertificadosAVencer,
+  obtenerSgaConsulta
 };

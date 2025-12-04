@@ -11,7 +11,8 @@ const {
   verEditarInsumo,
   obtenerDataEditarInsumo,
   agregarItemAUsuario,
-  obtenerCertificadosAVencer
+  obtenerCertificadosAVencer,
+  obtenerSgaConsulta
 } = require("./registros.controller");
 const multer = require("multer");
 const path = require("path");
@@ -47,6 +48,7 @@ router.get("/obtener/certificados/:idUsuario", obtenerCertificadosAVencer);
 router.get("/estadistica/:idUsuario", obtenerEstadisticaInsumo);
 router.get("/ver/editar/insumo/:idUsuario/:estado", verEditarInsumo);
 router.get("/registros/:idUsuario", obtenerRegistrosInsumo);
+router.get("/sga/:idUsuario", obtenerSgaConsulta);
 router.get(
   "/data/editar/insumo/:matempresa/:empresa_id/:usuario_id",
   obtenerDataEditarInsumo
