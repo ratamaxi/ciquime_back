@@ -157,6 +157,9 @@ const sgaPeligros = async (req, res) => {
     const mp = await getMateriaBase(materiaId);
     if (!mp) return res.json({ ok: true, data: null });
 
+    // 🔐 generamos el id encriptado igual que en redirectHSO
+    const id_encrypt = encryptIdCompatEtiqueta(String(materiaId), LEGACY_KEY);
+
     const hSet = getHSet(mp);
     const frasesH = await getFrasesHSpanish(hSet);
     const expandedH = [...new Set(hSet.flatMap(h => h.split('+').filter(Boolean)))];
@@ -170,8 +173,12 @@ const sgaPeligros = async (req, res) => {
       if (code) pictogramas.push(code);
     }
 
+    console.log(id_encrypt)
+
     return res.json({
       ok: true,
+      // 👉 devolvemos también el id encriptado
+      id_encrypt,
       data: {
         header: {
           nombre_producto: mp.nombre_producto,
@@ -185,8 +192,11 @@ const sgaPeligros = async (req, res) => {
         consejosPrudencia: frasesP.map(p => ({ frase: p, espaniol: pMap[p] || '' }))
       }
     });
-  } catch (e) { return srvErr(res, e, 'peligros'); }
+  } catch (e) {
+    return srvErr(res, e, 'peligros');
+  }
 };
+
 
 // ───────────── SGA: EPP y Composición (tab 2) ─────────────
 const sgaEppComposicion = async (req, res) => {
@@ -516,7 +526,8 @@ const obtenerCertificadosCalidad = async (req, res = response) => {
         materia_empresa.fechacalidad,
         materia_empresa.fechacalidad2,
         materias_primas.id,
-        materia_empresa.aviso
+        materia_empresa.aviso,
+        empresa_tercero.razonSocial
       FROM materia_empresa
       INNER JOIN materias_primas ON materias_primas.id = materia_empresa.materia_id
       INNER JOIN empresa_tercero ON materias_primas.fabricante = empresa_tercero.id
@@ -555,7 +566,8 @@ const obtenerCertificadosCalidad = async (req, res = response) => {
         aviso: r.aviso ?? null,
         estado,            
         diasRestantes,
-        materia_id: r.id  
+        materia_id: r.id,
+        fabricante: r.razonSocial
       };
     });
 

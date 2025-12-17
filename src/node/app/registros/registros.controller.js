@@ -1,22 +1,23 @@
-const pool = require('../../core/database/mysql-config.js');
-const { response } = require('express');
-const path = require('path');
+const pool = require("../../core/database/mysql-config.js");
+const { response } = require("express");
+const path = require("path");
 const fs = require("fs");
 
 const obtenerMateriasPrimas = async (req, res) => {
   try {
-    const idUsuario =
-      Number(req.params?.idUsuario ?? req.query?.idUsuario ?? req.body?.idUsuario ?? 0);
-    const dias = 20
+    const idUsuario = Number(
+      req.params?.idUsuario ?? req.query?.idUsuario ?? req.body?.idUsuario ?? 0
+    );
+    const dias = 20;
 
     if (!Number.isFinite(idUsuario)) {
-      return res.status(400).json({ error: 'idUsuario inválido' });
+      return res.status(400).json({ error: "idUsuario inválido" });
     }
     if (!Number.isFinite(dias) || dias < 0) {
-      return res.status(400).json({ error: 'dias inválido' });
+      return res.status(400).json({ error: "dias inválido" });
     }
 
-        const sql = `
+    const sql = `
 SELECT materias_primas.id, materias_primas.nombre_producto, empresa_tercero.razonSocial AS nomb_empresa, materia_empresa.estado, materia_empresa.actualizado
 FROM materia_empresa
 INNER JOIN materias_primas ON materia_empresa.materia_id = materias_primas.id
@@ -27,14 +28,15 @@ WHERE usuario_id = ? AND ABS(DATEDIFF(NOW(), actualizado)) <= 20
     const [rows] = await pool.execute(sql, [idUsuario]);
     return res.status(200).json(rows);
   } catch (err) {
-    console.error('obtenerMateriasPrimas error:', err);
-    return res.status(500).json({ error: 'Error interno del servidor' });
+    console.error("obtenerMateriasPrimas error:", err);
+    return res.status(500).json({ error: "Error interno del servidor" });
   }
 };
 
 const obtenerEstadisticaInsumo = async (req, res) => {
   const idUsuario = Number(req.params.idUsuario);
-  if (!idUsuario) return res.status(400).json({ error: 'idUsuario es requerido' });
+  if (!idUsuario)
+    return res.status(400).json({ error: "idUsuario es requerido" });
 
   try {
     const [rows] = await pool.query(
@@ -52,31 +54,50 @@ const obtenerEstadisticaInsumo = async (req, res) => {
     );
 
     // Normalizamos salida
-    let aprobados = 0, pendientes = 0, rechazados = 0;
-    (rows).forEach(r => {
-      if (r.estado === 'APROBADO')  aprobados = Number(r.total) || 0;
-      if (r.estado === 'PENDIENTE') pendientes = Number(r.total) || 0;
-      if (r.estado === 'RECHAZADO') rechazados = Number(r.total) || 0;
+    let aprobados = 0,
+      pendientes = 0,
+      rechazados = 0;
+    rows.forEach((r) => {
+      if (r.estado === "APROBADO") aprobados = Number(r.total) || 0;
+      if (r.estado === "PENDIENTE") pendientes = Number(r.total) || 0;
+      if (r.estado === "RECHAZADO") rechazados = Number(r.total) || 0;
     });
 
     res.json({ aprobados, pendientes, rechazados });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: 'Error consultando conteos' });
+    res.status(500).json({ error: "Error consultando conteos" });
   }
-}
+};
 
 const obtenerRegistrosInsumo = async (req, res) => {
   try {
     const idUsuarioRaw = req.params.idUsuario;
     const idUsuario = Number(idUsuarioRaw);
     if (!idUsuario || Number.isNaN(idUsuario)) {
-      return res.status(400).json({ error: 'idUsuario inválido' });
+      return res.status(400).json({ error: "idUsuario inválido" });
     }
-    const insumo = (req.query.insumo) ?? '';
-    const fabricante = (req.query.fabricante) ?? '';
+
+    const insumo = req.query.insumo ?? "";
+    const fabricante = req.query.fabricante ?? "";
     const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
+
+    // NUEVO: sortKey y sortDir desde el front
+    const sortKeyRaw = (req.query.sortKey || 'producto').toString();
+    const sortDirRaw = (req.query.sortDir || 'asc').toString().toLowerCase();
+
+    // whitelist para evitar inyección
+    const sortColumns = {
+      producto: 'mp.nombre_producto',
+      fabricante: 'et.razonSocial',
+      revFDS: 'fd.FDS_rev',
+      fechaFDS: 'fd.FDS_fecha',
+      empid: 'et.id',
+    };
+
+    const sortColumn = sortColumns[sortKeyRaw] || 'mp.nombre_producto';
+    const sortDir = sortDirRaw === 'desc' ? 'DESC' : 'ASC';
 
     const sql = `
       SELECT
@@ -104,7 +125,77 @@ const obtenerRegistrosInsumo = async (req, res) => {
         )
         AND mp.nombre_producto LIKE ?
         AND et.razonSocial LIKE ?
-      ORDER BY mp.id DESC
+      ORDER BY ${sortColumn} ${sortDir}
+      LIMIT ? OFFSET ?
+    `;
+
+    const params = [idUsuario, `%${insumo}%`, `%${fabricante}%`, limit, offset];
+
+    const [rows] = await pool.query(sql, params);
+    return res.json(rows);
+  } catch (err) {
+    console.error("obtenerRegistrosInsumo error:", err);
+    return res.status(500).json({ error: "Error consultando registros" });
+  }
+};
+
+const obtenerRegistrosInsumoPrivado = async (req, res) => {
+  try {
+    const idUsuarioRaw = req.params.idUsuario;
+    const idUsuario = Number(idUsuarioRaw);
+     const fabricante = req.params.idFabricante ?? "";
+    console.log(fabricante)
+    if (!idUsuario || Number.isNaN(idUsuario)) {
+      return res.status(400).json({ error: "idUsuario inválido" });
+    }
+
+    // filtros que vienen del front (opcionales)
+    const insumo = req.query.insumo ?? "";
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+
+    // sortKey y sortDir desde el front
+    const sortKeyRaw = (req.query.sortKey || "producto").toString();
+    const sortDirRaw = (req.query.sortDir || "asc").toString().toLowerCase();
+
+    // whitelist para evitar inyección SQL
+    const sortColumns = {
+      producto:   "materias_primas.nombre_producto",
+      fabricante: "empresa_tercero.razonSocial",
+      revFDS:     "materias_primas.revisionFDS",
+      fechaFDS:   "materias_primas.fechaFDS",
+      empid:      "empresa_tercero.id",
+    };
+
+    const sortColumn =
+      sortColumns[sortKeyRaw] || "materias_primas.id"; // fallback
+    const sortDir = sortDirRaw === "desc" ? "DESC" : "ASC";
+
+    const sql = `
+      SELECT
+        materias_primas.id              AS id,
+        materias_primas.fabricante      AS matid,
+        empresa_tercero.id              AS empid,
+        materias_primas.nombre_producto AS nombre_producto,
+        empresa_tercero.razonSocial     AS fabricante,
+        materias_primas.revisionFDS     AS revisionFDS,
+        materias_primas.fechaFDS        AS fecha_insert,
+        fds_dir.Nfile_name              AS archivo_nombre
+      FROM materias_primas
+      INNER JOIN empresa_tercero
+        ON materias_primas.fabricante = empresa_tercero.id
+      INNER JOIN fds_dir
+        ON materias_primas.id = fds_dir.insumo_id
+      WHERE materias_primas.visual != 'Publico'
+        AND fds_dir.fds_fundamental = 1
+        AND materias_primas.id NOT IN (
+          SELECT materia_id
+          FROM materia_empresa
+          WHERE usuario_id = ?
+        )
+        AND materias_primas.nombre_producto LIKE ?
+        AND empresa_tercero.razonSocial LIKE ?
+      ORDER BY ${sortColumn} ${sortDir}
       LIMIT ? OFFSET ?
     `;
 
@@ -119,73 +210,89 @@ const obtenerRegistrosInsumo = async (req, res) => {
     const [rows] = await pool.query(sql, params);
     return res.json(rows);
   } catch (err) {
-    console.error('obtenerRegistrosInsumo error:', err);
-    return res.status(500).json({ error: 'Error consultando registros' });
+    console.error("obtenerRegistrosInsumoPrivado error:", err);
+    return res
+      .status(500)
+      .json({ error: "Error consultando registros privados" });
   }
 };
+
 
 const obtenerSgaConsulta = async (req, res) => {
   try {
     const idUsuarioRaw = req.params.idUsuario;
     const idUsuario = Number(idUsuarioRaw);
     if (!idUsuario || Number.isNaN(idUsuario)) {
-      return res.status(400).json({ error: 'idUsuario inválido' });
+      return res.status(400).json({ error: "idUsuario inválido" });
     }
-    const insumo = (req.query.insumo) ?? '';
-    const fabricante = (req.query.fabricante) ?? '';
+
+    const insumo = req.query.insumo ?? "";
+    const fabricante = req.query.fabricante ?? "";
     const limit = Math.min(Math.max(Number(req.query.limit ?? 100), 1), 500);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
 
+    // 🔹 NUEVO: sortKey y sortDir
+    const sortKeyRaw = (req.query.sortKey || 'producto').toString();
+    const sortDirRaw = (req.query.sortDir || 'asc').toString().toLowerCase();
+
+    const sortColumns= {
+      producto: 'mp.nombre_producto',
+      fabricante: 'et.razonSocial',
+      revFDS: 'fd.FDS_rev',
+      fechaFDS: 'fd.FDS_fecha',
+      empid: 'et.id',
+    };
+
+    const sortColumn = sortColumns[sortKeyRaw] || 'mp.nombre_producto';
+    const sortDir = sortDirRaw === 'desc' ? 'DESC' : 'ASC';
+
+    // (opcional) log para ver que llegan bien
+    console.log('[SGA] sortKey', sortKeyRaw, 'sortDir', sortDirRaw);
+
     const sql = `
-  SELECT
-    me.materia_id,
-    mp.nombre_producto,
-    et.razonSocial           AS fabricante,   
-    fd.FDS_rev               AS revisionFDS,  
-    fd.FDS_fecha             AS fechaFDS,     
-    fd.Nfile_name            AS fds,         
-    me.extraname,
-    me.apr_code
-  FROM materia_empresa AS me
-  INNER JOIN materias_primas AS mp
-    ON mp.id = me.materia_id
-  INNER JOIN empresa_tercero AS et
-    ON mp.fabricante = et.id
-  INNER JOIN fds_dir AS fd
-    ON mp.id = fd.insumo_id
-  WHERE me.estado = 'APROBADO'
-    AND me.usuario_id = ?
-    AND fd.fds_fundamental = 1          
-    AND mp.nombre_producto LIKE ?
-    AND et.razonSocial LIKE ?
-  ORDER BY mp.nombre_producto ASC, fd.FDS_fecha DESC
-  LIMIT ? OFFSET ?
-`;
+      SELECT
+        mp.id                AS id,
+        me.materia_id        AS matid,
+        et.id                AS empid,
+        mp.nombre_producto   AS nombre_producto,
+        et.razonSocial       AS fabricante,   
+        fd.FDS_rev           AS revisionFDS,  
+        fd.FDS_fecha         AS fechaFDS,     
+        fd.Nfile_name        AS fds,         
+        me.extraname,
+        me.apr_code
+      FROM materia_empresa AS me
+      INNER JOIN materias_primas AS mp
+        ON mp.id = me.materia_id
+      INNER JOIN empresa_tercero AS et
+        ON mp.fabricante = et.id
+      INNER JOIN fds_dir AS fd
+        ON mp.id = fd.insumo_id
+      WHERE me.estado = 'APROBADO'
+        AND me.usuario_id = ?
+        AND fd.fds_fundamental = 1          
+        AND mp.nombre_producto LIKE ?
+        AND et.razonSocial LIKE ?
+      ORDER BY ${sortColumn} ${sortDir}
+      LIMIT ? OFFSET ?
+    `;
 
-
-
-
-    const params = [
-      idUsuario,
-      `%${insumo}%`,
-      `%${fabricante}%`,
-      limit,
-      offset,
-    ];
+    const params = [idUsuario, `%${insumo}%`, `%${fabricante}%`, limit, offset];
 
     const [rows] = await pool.query(sql, params);
     return res.json(rows);
   } catch (err) {
-    console.error('obtenerRegistrosInsumo error:', err);
-    return res.status(500).json({ error: 'Error consultando registros' });
+    console.error("obtenerSgaConsulta error:", err);
+    return res.status(500).json({ error: "Error consultando registros" });
   }
 };
 
-const FDS_DIR = process.env.FDS_DIR || (
-  process.platform === 'win32'
-    ? 'C:\\wamp\\www\\CIQUIME\\PDF\\fds_temporal'
-    : '/var/www/CIQUIME/PDF/fds_temporal'
-);
+
+const FDS_DIR =
+  process.env.FDS_DIR ||
+  (process.platform === "win32"
+    ? "C:\\wamp\\www\\CIQUIME\\PDF\\fds_temporal"
+    : "/var/www/CIQUIME/PDF/fds_temporal");
 
 const insertarInsumos = async (req, res) => {
   try {
@@ -212,14 +319,14 @@ const insertarInsumos = async (req, res) => {
     if (!f) {
       return res.status(400).json({
         ok: false,
-        msj: 'PDF obligatorio',
-        detail: 'archivoFds ausente'
+        msj: "PDF obligatorio",
+        detail: "archivoFds ausente",
       });
     }
 
     // nombre “seguro”
-    const originalName = f.originalname || f.filename || 'archivo.pdf';
-    const safeName = path.basename(originalName).replace(/[\/\\:?*"<>|]/g, '_');
+    const originalName = f.originalname || f.filename || "archivo.pdf";
+    const safeName = path.basename(originalName).replace(/[\/\\:?*"<>|]/g, "_");
 
     // asegurar carpeta destino
     await fs.promises.mkdir(FDS_DIR, { recursive: true });
@@ -229,20 +336,20 @@ const insertarInsumos = async (req, res) => {
     await fs.promises.rename(f.path, finalPath);
 
     // normalizar a slashes (como guardaba PHP)
-    const finalPathForDb = finalPath.replace(/\\/g, '/');
+    const finalPathForDb = finalPath.replace(/\\/g, "/");
 
     // validaciones mínimas
     const faltantes = [];
-    if (!nombre) faltantes.push('nombre');
-    if (!fabricante) faltantes.push('fabricante');
-    if (!id_usuario) faltantes.push('id_usuario');
-    if (!id_empresa) faltantes.push('id_empresa');
+    if (!nombre) faltantes.push("nombre");
+    if (!fabricante) faltantes.push("fabricante");
+    if (!id_usuario) faltantes.push("id_usuario");
+    if (!id_empresa) faltantes.push("id_empresa");
 
     if (faltantes.length) {
       return res.status(400).json({
         ok: false,
-        msj: 'Faltan campos obligatorios',
-        detail: faltantes.join(', ')
+        msj: "Faltan campos obligatorios",
+        detail: faltantes.join(", "),
       });
     }
 
@@ -258,8 +365,8 @@ const insertarInsumos = async (req, res) => {
       fabricante,
       revisionFDS ?? null,
       normalizeFecha(fechaFDS),
-      safeName,                   
-      finalPathForDb,             
+      safeName,
+      finalPathForDb,
       toTinyInt(visual, 0),
       sector ?? null,
       toTinyInt(procesado, 0),
@@ -273,17 +380,17 @@ const insertarInsumos = async (req, res) => {
 
     return res.status(201).json({
       ok: true,
-      msj: 'Insertado correctamente',
+      msj: "Insertado correctamente",
       id: result.insertId,
       affectedRows: result.affectedRows,
       name_fds: safeName,
       dir_fds: finalPathForDb,
     });
   } catch (err) {
-    console.error('insertarInsumos error:', err, 'req.file =', req.file);
+    console.error("insertarInsumos error:", err, "req.file =", req.file);
     return res.status(500).json({
       ok: false,
-      msj: 'Error interno al insertar',
+      msj: "Error interno al insertar",
       detail: err.message || String(err),
     });
   }
@@ -295,7 +402,7 @@ const verEditarInsumo = async (req, res = response) => {
 
     // Validación simple del parámetro
     if (!/^\d+$/.test(idUsuario)) {
-      return res.status(400).json({ ok: false, msg: 'idUsuario inválido' });
+      return res.status(400).json({ ok: false, msg: "idUsuario inválido" });
     }
 
     const sql = `
@@ -318,58 +425,62 @@ const verEditarInsumo = async (req, res = response) => {
       ORDER BY mp.nombre_producto ASC, fd.FDS_fecha DESC
     `;
 
-    const [rows] = await pool.query(sql, [estado,Number(idUsuario)]);
+    const [rows] = await pool.query(sql, [estado, Number(idUsuario)]);
 
     if (!rows || rows.length === 0) {
-      return res.status(404).json({ ok: true, data: [], msg: 'Sin resultados' });
+      return res
+        .status(404)
+        .json({ ok: true, data: [], msg: "Sin resultados" });
     }
 
     return res.json({ ok: true, data: rows });
   } catch (error) {
-    console.error('Error en verEditarInsumo:', error);
+    console.error("Error en verEditarInsumo:", error);
     return res.status(500).json({
       ok: false,
-      msg: 'Error al obtener insumos',
+      msg: "Error al obtener insumos",
       error: error.message,
     });
   }
 };
 const toTinyInt = (v, def = 0) =>
-  v === undefined || v === null ? def : (v === true ? 1 : (v === false ? 0 : Number(v)));
+  v === undefined || v === null
+    ? def
+    : v === true
+    ? 1
+    : v === false
+    ? 0
+    : Number(v);
 
 const normalizeFecha = (f) => {
   if (!f) return null;
   if (f instanceof Date && !isNaN(f)) {
     // YYYY-MM-DD desde Date
-    const pad = (n) => String(n).padStart(2, '0');
+    const pad = (n) => String(n).padStart(2, "0");
     return `${f.getFullYear()}-${pad(f.getMonth() + 1)}-${pad(f.getDate())}`;
   }
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(f)) {
-    const [dd, mm, yyyy] = f.split('/');
+    const [dd, mm, yyyy] = f.split("/");
     return `${yyyy}-${mm}-${dd}`;
   }
-  return f; 
+  return f;
 };
 
 const eliminarInsumo = async (req, res) => {
   try {
-    let {
-      matempresa,
-      empresa_id,
-      usuario_id,
-    } = req.body || {};
+    let { matempresa, empresa_id, usuario_id } = req.body || {};
 
     const materia_id = matempresa ?? req.body?.materia_id ?? req.body?.id;
     const faltan = [];
-    if (!materia_id) faltan.push('matempresa (materia_id)');
-    if (!empresa_id) faltan.push('empresa_id');
-    if (!usuario_id) faltan.push('usuario_id');
+    if (!materia_id) faltan.push("matempresa (materia_id)");
+    if (!empresa_id) faltan.push("empresa_id");
+    if (!usuario_id) faltan.push("usuario_id");
 
     if (faltan.length) {
       return res.status(400).json({
         ok: false,
-        msj: 'Faltan campos obligatorios',
-        detail: faltan.join(', ')
+        msj: "Faltan campos obligatorios",
+        detail: faltan.join(", "),
       });
     }
 
@@ -389,36 +500,36 @@ const eliminarInsumo = async (req, res) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({
         ok: false,
-        msj: 'No se encontró el insumo para ese usuario/empresa',
-        detail: { materia_id, empresa_id, usuario_id }
+        msj: "No se encontró el insumo para ese usuario/empresa",
+        detail: { materia_id, empresa_id, usuario_id },
       });
     }
 
     return res.status(200).json({
       ok: true,
-      msj: 'Insumo marcado como ELIMINADO',
+      msj: "Insumo marcado como ELIMINADO",
       affectedRows: result.affectedRows,
       materia_id,
       empresa_id,
       usuario_id,
     });
   } catch (err) {
-    console.error('eliminarInsumo error:', err);
+    console.error("eliminarInsumo error:", err);
     return res.status(500).json({
       ok: false,
-      msj: 'Error interno al eliminar',
+      msj: "Error interno al eliminar",
       detail: err.message || String(err),
     });
   }
 };
 
 const obtenerDataEditarInsumo = async (req, res) => {
- try {
+  try {
     let { matempresa, empresa_id, usuario_id } = req.params;
 
-    if (!matempresa) faltan.push('matempresa');
-    if (!empresa_id) faltan.push('empresa_id');
-    if (!usuario_id) faltan.push('usuario_id');
+    if (!matempresa) faltan.push("matempresa");
+    if (!empresa_id) faltan.push("empresa_id");
+    if (!usuario_id) faltan.push("usuario_id");
 
     // 1) Datos del insumo (materia_empresa) para rellenar el formulario
     const [insumoRows] = await pool.execute(
@@ -434,8 +545,8 @@ const obtenerDataEditarInsumo = async (req, res) => {
     if (insumoRows.length === 0) {
       return res.status(404).json({
         ok: false,
-        msj: 'No se encontró el insumo para ese usuario/empresa',
-        detail: { materia_id, empresa_id, usuario_id }
+        msj: "No se encontró el insumo para ese usuario/empresa",
+        detail: { materia_id, empresa_id, usuario_id },
       });
     }
     const insumo = insumoRows[0];
@@ -453,16 +564,16 @@ const obtenerDataEditarInsumo = async (req, res) => {
 
     return res.status(200).json({
       ok: true,
-      msj: 'Datos para edición',
-      insumo,    
+      msj: "Datos para edición",
+      insumo,
       producto,
-      keys: { matempresa, empresa_id, usuario_id }
+      keys: { matempresa, empresa_id, usuario_id },
     });
   } catch (err) {
-    console.error('obtenerInsumoParaEdicion error:', err);
+    console.error("obtenerInsumoParaEdicion error:", err);
     return res.status(500).json({
       ok: false,
-      msj: 'Error interno al consultar',
+      msj: "Error interno al consultar",
       detail: err.message || String(err),
     });
   }
@@ -474,7 +585,9 @@ const obtenerDataSectorInsumo = async (req, res) => {
     const Eid = parseInt(empresa_id, 10);
 
     if (Number.isNaN(Eid)) {
-      return res.status(400).json({ ok: false, message: 'empresa_id inválido' });
+      return res
+        .status(400)
+        .json({ ok: false, message: "empresa_id inválido" });
     }
 
     const sql = `
@@ -489,13 +602,13 @@ const obtenerDataSectorInsumo = async (req, res) => {
 
     return res.json({
       ok: true,
-      data: rows, 
+      data: rows,
     });
   } catch (err) {
-    console.error('Error en obtenerDataSectorInsumo:', err);
+    console.error("Error en obtenerDataSectorInsumo:", err);
     return res.status(500).json({
       ok: false,
-      message: 'Error al obtener sectores',
+      message: "Error al obtener sectores",
     });
   }
 };
@@ -503,7 +616,7 @@ const obtenerDataSectorInsumo = async (req, res) => {
 const modificarInsumo = async (req, res) => {
   const { idUsuario } = req.params;
   const {
-    materia_id,        
+    materia_id,
     extraname = null,
     presentacion = null,
     sector = null,
@@ -513,10 +626,10 @@ const modificarInsumo = async (req, res) => {
 
   // Validaciones básicas
   if (!/^\d+$/.test(String(idUsuario))) {
-    return res.status(400).json({ ok: false, message: 'idUsuario inválido' });
+    return res.status(400).json({ ok: false, message: "idUsuario inválido" });
   }
   if (!/^\d+$/.test(String(materia_id))) {
-    return res.status(400).json({ ok: false, message: 'materia_id inválido' });
+    return res.status(400).json({ ok: false, message: "materia_id inválido" });
   }
 
   try {
@@ -532,8 +645,13 @@ const modificarInsumo = async (req, res) => {
       WHERE materia_id = ? AND usuario_id = ?
     `;
     const params = [
-      extraname, presentacion, sector, lote, nota,
-      Number(materia_id), Number(idUsuario)
+      extraname,
+      presentacion,
+      sector,
+      lote,
+      nota,
+      Number(materia_id),
+      Number(idUsuario),
     ];
 
     const [result] = await pool.query(sql, params);
@@ -545,8 +663,10 @@ const modificarInsumo = async (req, res) => {
       usuario_id: Number(idUsuario),
     });
   } catch (err) {
-    console.error('[modificarInsumo] error:', err);
-    return res.status(500).json({ ok: false, message: 'Error al actualizar el insumo' });
+    console.error("[modificarInsumo] error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, message: "Error al actualizar el insumo" });
   }
 };
 
@@ -566,14 +686,19 @@ const agregarItemAUsuario = async (req, res) => {
     ) {
       return res.status(400).json({
         ok: false,
-        message: 'Parámetros inválidos: empresa, materia y usuario deben ser numéricos',
+        message:
+          "Parámetros inválidos: empresa, materia y usuario deben ser numéricos",
       });
     }
 
     // fecha_update: ahora (YYYY-MM-DD HH:MM:SS) — también podrías usar NOW() en SQL
     const fechaUpdate = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const fechaSql = `${fechaUpdate.getFullYear()}-${pad(fechaUpdate.getMonth() + 1)}-${pad(fechaUpdate.getDate())} ${pad(fechaUpdate.getHours())}:${pad(fechaUpdate.getMinutes())}:${pad(fechaUpdate.getSeconds())}`;
+    const pad = (n) => String(n).padStart(2, "0");
+    const fechaSql = `${fechaUpdate.getFullYear()}-${pad(
+      fechaUpdate.getMonth() + 1
+    )}-${pad(fechaUpdate.getDate())} ${pad(fechaUpdate.getHours())}:${pad(
+      fechaUpdate.getMinutes()
+    )}:${pad(fechaUpdate.getSeconds())}`;
 
     const sql = `
       INSERT INTO materia_empresa
@@ -587,21 +712,21 @@ const agregarItemAUsuario = async (req, res) => {
 
     return res.status(201).json({
       ok: true,
-      message: 'Insumo vinculado al usuario correctamente',
+      message: "Insumo vinculado al usuario correctamente",
       insertId: result?.insertId ?? null,
     });
   } catch (err) {
     // Si tenés una restricción única y se intenta duplicar, MySQL lanza ER_DUP_ENTRY
-    if (err && err.code === 'ER_DUP_ENTRY') {
+    if (err && err.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
         ok: false,
-        message: 'El registro ya existe para ese usuario/empresa/materia',
+        message: "El registro ya existe para ese usuario/empresa/materia",
       });
     }
-    console.error('Error en agregarItemAUsuario:', err);
+    console.error("Error en agregarItemAUsuario:", err);
     return res.status(500).json({
       ok: false,
-      message: 'Error al vincular el insumo con el usuario',
+      message: "Error al vincular el insumo con el usuario",
     });
   }
 };
@@ -612,7 +737,7 @@ const obtenerCertificadosAVencer = async (req, res) => {
     const userId = parseInt(idUsuario, 10);
 
     if (Number.isNaN(userId) || userId <= 0) {
-      return res.status(400).json({ ok: false, message: 'idUsuario inválido' });
+      return res.status(400).json({ ok: false, message: "idUsuario inválido" });
     }
 
     const sql = `
@@ -643,23 +768,106 @@ const obtenerCertificadosAVencer = async (req, res) => {
     const [rows] = await pool.query(sql, [userId]);
 
     // Opcional: normalizar formato de salida (por si querés que el front lo consuma directo)
-    const data = rows.map(r => ({
+    const data = rows.map((r) => ({
       usuario_id: r.usuario_id,
       producto: r.nombre_producto,
       extraname: r.extraname ?? null,
       certificado: r.nombre_calidoc ?? null,
-      fechaExpiracion: r.fechacalidad, 
+      fechaExpiracion: r.fechacalidad,
       aviso: r.aviso ?? null,
-      estado: r.estado,                
-      dias_restantes: r.dias_restantes, 
+      estado: r.estado,
+      dias_restantes: r.dias_restantes,
     }));
 
     return res.json({ ok: true, data });
   } catch (err) {
-    console.error('[obtenerCertificadosAVencer] Error:', err);
-    return res.status(500).json({ ok: false, message: 'Error al obtener certificados.' });
+    console.error("[obtenerCertificadosAVencer] Error:", err);
+    return res
+      .status(500)
+      .json({ ok: false, message: "Error al obtener certificados." });
   }
 };
+
+function getSrcPorRango(rango) {
+  switch (String(rango)) {
+    case "1": return "../../static/imagenes/icons/ipel1.png";
+    case "2": return "../../static/imagenes/icons/ipel2.png";
+    case "3": return "../../static/imagenes/icons/ipel3.png";
+    case "4": return "../../static/imagenes/icons/ipel4.png";
+    case "5": return "../../static/imagenes/icons/ipel5.png";
+    default:  return "../../static/imagenes/icons/iPel_off.png";
+  }
+}
+
+async function obtenerIpelConsulta(req, res) {
+  try {
+    const { idInsumo } = req.params;
+
+    // Validación básica (evita inyección si te mandan cualquier cosa)
+    const id = Number(idInsumo);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "idInsumo inválido" });
+    }
+
+    // 1) Traigo H01..H10
+    const [rowsMp] = await pool.execute(
+      `SELECT H01,H02,H03,H04,H05,H06,H07,H08,H09,H10
+       FROM materias_primas
+       WHERE id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    if (rowsMp.length === 0) {
+      return res.status(404).json({ ok: false, error: "Insumo no encontrado" });
+    }
+
+    const fila = rowsMp[0];
+
+    // Armo el array de frases (sin null/empty y sin repetidas)
+    const frases = Object.values(fila)
+      .filter(v => v !== null && v !== undefined && String(v).trim() !== "")
+      .map(v => String(v).trim());
+
+    const frasesUnicas = [...new Set(frases)];
+
+    // Si no hay frases, devuelvo "off"
+    if (frasesUnicas.length === 0) {
+      return res.json({
+        ok: true,
+        rango_p: null,
+        descripcion_p: null,
+        src: getSrcPorRango(null),
+        frases: []
+      });
+    }
+
+    // 2) Consulta categoria_p con IN dinámico y placeholders (seguro)
+    const placeholders = frasesUnicas.map(() => "?").join(",");
+    const sqlCat = `
+      SELECT MIN(rango_p) AS rango_p,
+             MIN(descripcion_p) AS descripcion_p
+      FROM categoria_p
+      WHERE frases IN (${placeholders})
+    `;
+
+    const [rowsCat] = await pool.execute(sqlCat, frasesUnicas);
+
+    const rango_p = rowsCat?.[0]?.rango_p ?? null;
+    const descripcion_p = rowsCat?.[0]?.descripcion_p ?? null;
+
+    return res.json({
+      ok: true,
+      rango_p,
+      descripcion_p,
+      src: getSrcPorRango(rango_p),
+      frases: frasesUnicas
+    });
+  } catch (error) {
+    console.error("obtenerIpelConsulta error:", error);
+    return res.status(500).json({ ok: false, error: "Error interno" });
+  }
+}
 
 module.exports = {
   obtenerMateriasPrimas,
@@ -673,5 +881,7 @@ module.exports = {
   modificarInsumo,
   agregarItemAUsuario,
   obtenerCertificadosAVencer,
-  obtenerSgaConsulta
+  obtenerSgaConsulta,
+  obtenerIpelConsulta,
+  obtenerRegistrosInsumoPrivado
 };

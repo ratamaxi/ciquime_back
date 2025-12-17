@@ -12,7 +12,9 @@ const {
   obtenerDataEditarInsumo,
   agregarItemAUsuario,
   obtenerCertificadosAVencer,
-  obtenerSgaConsulta
+  obtenerSgaConsulta,
+  obtenerIpelConsulta,
+  obtenerRegistrosInsumoPrivado
 } = require("./registros.controller");
 const multer = require("multer");
 const path = require("path");
@@ -48,7 +50,9 @@ router.get("/obtener/certificados/:idUsuario", obtenerCertificadosAVencer);
 router.get("/estadistica/:idUsuario", obtenerEstadisticaInsumo);
 router.get("/ver/editar/insumo/:idUsuario/:estado", verEditarInsumo);
 router.get("/registros/:idUsuario", obtenerRegistrosInsumo);
+router.get("/registros/privado/:idUsuario/:idFabricante", obtenerRegistrosInsumoPrivado);
 router.get("/sga/:idUsuario", obtenerSgaConsulta);
+router.get("/ipel/:idInsumo", obtenerIpelConsulta);
 router.get(
   "/data/editar/insumo/:matempresa/:empresa_id/:usuario_id",
   obtenerDataEditarInsumo
